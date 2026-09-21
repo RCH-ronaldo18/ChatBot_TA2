@@ -1,0 +1,17 @@
+[client]
+toolbarMode = "developer"
+
+[browser]
+gatherUsageStats = false
+
+[theme.light]
+primaryColor = "#0E7C86"
+backgroundColor = "#F6F9FA"
+secondaryBackgroundColor = "#E6EFF1"
+textColor = "#16282D"
+
+[theme.dark]
+primaryColor = "#3CC4CF"
+backgroundColor = "#0E1A1F"
+secondaryBackgroundColor = "#16272E"
+textColor = "#E5EEF0"
