@@ -12,18 +12,21 @@ import unicodedata
 import uuid
 from datetime import date, datetime, timedelta
 
+import base64
+import io
+
 import streamlit as st
+import streamlit.components.v1 as components
 from groq import Groq
 
 try:
-    import edge_tts   
+    import edge_tts  
 except ImportError:
     edge_tts = None
 
-
 # Configuración
 MODEL_STT = "whisper-large-v3-turbo"     
-MODEL_CHAT = "openai/gpt-oss-120b"        
+MODEL_CHAT = "openai/gpt-oss-120b"       
 MAX_TOOL_ROUNDS = 4
 
 def buscar_logo():
@@ -56,11 +59,18 @@ st.markdown(
     [data-testid="stMainMenuItem-clearCache"],
     [data-testid="stMainMenuItem-print"],
     [data-testid="stMainMenuItem-recordScreencast"] { display: none !important; }
+    /* Respuesta por voz: se reproduce sola, sin mostrar el reproductor */
+    [data-testid="stAudio"] { position: absolute; width: 1px; height: 1px; overflow: hidden;
+                              opacity: 0; pointer-events: none; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 AVATARES = {"user": ":material/person:", "assistant": ":material/support_agent:"}
+
+RUTA_LIVE_MIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "components", "live_mic")
+dictado_en_vivo = (components.declare_component("live_mic", path=RUTA_LIVE_MIC)
+                   if os.path.isdir(RUTA_LIVE_MIC) else None)
 
 
 def get_api_key() -> str | None:
@@ -74,7 +84,7 @@ def get_api_key() -> str | None:
 
 
 
-# Datos FICTICIOS de la agencia 
+# Datos FICTICIOS de la agencia (no son precios ni disponibilidad reales)
 
 DESTINOS = {
     "cusco": {
@@ -135,7 +145,7 @@ DESTINOS = {
 NIVELES = ["bajo", "medio", "alto"]
 MAX_DIAS_COTIZACION = 30
 MAX_PERSONAS = 20
-MAX_MENSAJES_CONTEXTO = 30   #
+MAX_MENSAJES_CONTEXTO = 30  
 TIPOS_VIAJE = ["cultura", "aventura", "naturaleza", "playa", "gastronomia"]
 
 
@@ -246,7 +256,7 @@ def consultar_paquetes(destino: str, dias: int = None, presupuesto: str = None,
     if paquetes:
         return {"destino": d["nombre"], "paquetes": paquetes, "nota": "Precios referenciales ficticios, sujetos a cotización."}
 
-
+ 
     resp = {"destino": d["nombre"], "paquetes": [], "mensaje": "No hay paquete estándar con esos filtros.",
             "duraciones_estandar": d["duraciones"]}
     if max_pen:
@@ -295,7 +305,7 @@ def solicitar_cotizacion_viaje(destino: str = None, dias: int = None, personas: 
         return {"error": "fecha_salida no puede estar en el pasado"}
     if fecha > date.today() + timedelta(days=730):
         return {"error": "fecha_salida no puede superar los 2 años desde hoy"}
-    # 3) Cotización SIMULADA
+    # 3) Cotización SIMULADA (no se reserva nada real)
     d = DESTINOS[key]
     por_persona = d["precio_dia"][pres] * dias
     res = {
@@ -414,8 +424,9 @@ TOOLS = [
     },
 ]
 
+# ------------------
 # Prompt de sistema
-
+# ------------------
 def system_prompt() -> str:
     return f"""# ROL
 Eres "Viajito", asesor virtual de voz de una agencia de viajes y turismo en Perú. Hoy es {date.today().isoformat()}.
@@ -460,6 +471,7 @@ No pidas ni almacenes datos sensibles (DNI, tarjetas, contraseñas).
 
 
 # Lógica: transcripción y chat con tool calling
+
 PROMPT_WHISPER = ("Consulta a una agencia de viajes en Perú. Destinos: Cusco, Machu Picchu, Arequipa, Cañón del Colca, "
                   "Paracas, Islas Ballestas, Huacachina, Máncora, Iquitos, Lima, Miraflores. Presupuesto bajo, medio o alto.")
 ALUCINACIONES = ("amara.org", "subtítulos", "subtitulos", "suscríbete", "suscribete", "gracias por ver")
@@ -470,12 +482,11 @@ def transcribir(client: Groq, audio_bytes: bytes, nombre: str) -> str:
         file=(nombre, audio_bytes),
         model=MODEL_STT,
         language="es",
-        prompt=PROMPT_WHISPER,   # sesga a Whisper hacia el vocabulario del negocio
+        prompt=PROMPT_WHISPER,   
         temperature=0.0,
     )
     texto = (resp.text or "").strip()
     
-    t = norm(texto)
     if len(t) < 2 or any(norm(a) in t for a in ALUCINACIONES) or t in norm(PROMPT_WHISPER):
         return ""
     return texto
@@ -505,7 +516,6 @@ def recortar_historial(msgs: list) -> list:
 
 
 
-# Respuesta por voz (TTS). 
 VOCES = {"Camila (Perú, mujer)": "es-PE-CamilaNeural", "Alex (Perú, hombre)": "es-PE-AlexNeural"}
 
 
@@ -523,7 +533,7 @@ def _fecha_hablada(m) -> str:
 
 def _monto_hablado(m) -> str:
     n = re.sub(r"[\s\u00a0\u202f]", "", m.group(1))
-    dec = re.search(r"[.,](\d{1,2})$", n)          
+    dec = re.search(r"[.,](\d{1,2})$", n) 
     centavos = 0
     if dec:
         centavos = int(dec.group(1).ljust(2, "0"))
@@ -534,23 +544,22 @@ def _monto_hablado(m) -> str:
 
 def texto_para_voz(t: str) -> str:
     """Convierte la respuesta escrita en texto natural para leerlo en voz alta."""
-    t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)                                   
-
+    t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)                                 
     t = re.sub(r"(?:\s*en\s+formato)?\s*\(?\b(?:YYYY|AAAA)[-/]MM[-/]DD\b\)?", "", t, flags=re.I)
-    t = re.sub(r"\b(\d{4})-(\d{2})-(\d{2})\b", _fecha_hablada, t)                   
+    t = re.sub(r"\b(\d{4})-(\d{2})-(\d{2})\b", _fecha_hablada, t)                    
     t = re.sub(r"(\d+)\s*d[ií]as?\s*[/y-]\s*(\d+)\s*noches?", r"\1 días y \2 noches", t, flags=re.I)
     t = re.sub(r"(\d+)D\s*/\s*(\d+)N", r"\1 días y \2 noches", t)                    
-    t = re.sub(r"S/\.?\s*(\d+(?:[ \u00a0\u202f.,]\d{3})*(?:[.,]\d{1,2})?)", _monto_hablado, t)  
+    t = re.sub(r"S/\.?\s*(\d+(?:[ \u00a0\u202f.,]\d{3})*(?:[.,]\d{1,2})?)", _monto_hablado, t) 
     t = t.replace("PEN", "soles")
     t = re.sub(r"(?<=\d)[\u00a0\u202f](?=\d{3}\b)", "", t)                            
     t = re.sub(r"(\d) (\d{3})(?= soles)", r"\1\2", t)
     t = t.replace("%", " por ciento")
     t = re.sub(r"[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u20E3]", "", t)          
-    t = re.sub(r"[*_`#>|]", "", t)                                                  
-    t = re.sub(rf"\b({RE_MESES})\s*[-–]\s*({RE_MESES})\b", r"\1 a \2", t, flags=re.I)  
+    t = re.sub(r"[*_`#>|]", "", t)                                                    
+    t = re.sub(rf"\b({RE_MESES})\s*[-–]\s*({RE_MESES})\b", r"\1 a \2", t, flags=re.I) 
     t = re.sub(r"[ \t][-–—][ \t]", ", ", t)                                                 
     t = t.replace("/", ", ")
-   
+
     frases = []
     for linea in t.split("\n"):
         linea = re.sub(r"^\s*(?:[-•]|\d+[.)])\s*", "", linea).strip()
@@ -580,7 +589,7 @@ def hablar(texto: str, voz: str):
         return None
     try:
         return asyncio.run(asyncio.wait_for(_sintetizar(limpio, voz), timeout=20)) or None
-    except Exception: 
+    except Exception:  
         return None
 
 
@@ -592,7 +601,7 @@ def ejecutar_funcion(nombre: str, args: dict) -> dict:
         return fn(**args)
     except TypeError as e:
         return {"error": f"Argumentos inválidos: {e}"}
-    except Exception as e: 
+    except Exception as e:  
         return {"error": f"Error interno: {e}"}
 
 
@@ -632,12 +641,12 @@ def responder(client: Groq, texto: str) -> tuple[str, list]:
             msg = resp.choices[0].message
             contenido = msg.content or ""
             llamadas = [(tc.id, tc.function.name, tc.function.arguments) for tc in (msg.tool_calls or [])]
-        except Exception as e: 
+        except Exception as e:  # noqa: BLE001
             recuperada = _recuperar_llamada(e)
             if recuperada:
                 contenido, llamadas = "", [recuperada]
             elif "tool_use_failed" in str(e).lower() and reintentos < 2:
-                reintentos += 1    
+                reintentos += 1   
                 continue
             else:
                 raise
@@ -653,7 +662,7 @@ def responder(client: Groq, texto: str) -> tuple[str, list]:
                     args = json.loads(argumentos or "{}")
                 except json.JSONDecodeError:
                     args = {}
-                args = {k: v for k, v in args.items() if v is not None}   # ignora parámetros en null
+                args = {k: v for k, v in args.items() if v is not None}   
                 resultado = ejecutar_funcion(nombre, args)
                 trazas.append({"funcion": nombre, "argumentos": args, "resultado": resultado})
                 msgs.append({"role": "tool", "tool_call_id": i,
@@ -684,14 +693,14 @@ def procesar(client: Groq, texto: str, es_voz: bool):
     st.session_state.reproducir = len(st.session_state.chat) - 1   # este mensaje se reproduce solo una vez
 
 
-
+# ------------------
 # Interfaz Streamlit
-
+# ------------------
 if "chat" not in st.session_state:
     st.session_state.chat = []         
     st.session_state.api_messages = [] 
     st.session_state.last_audio = None
-    st.session_state.audio_key = 0   
+    st.session_state.audio_key = 0      
 
 if LOGO:
     st.logo(LOGO, size="large")
@@ -716,6 +725,8 @@ with st.sidebar:
     else:
         st.toggle("Respuesta por voz", value=True, key="voz_activada")
         st.selectbox("Voz del asistente", list(VOCES), key="voz_nombre")
+    if dictado_en_vivo:
+        st.toggle("Dictado con texto en vivo (Chrome/Edge)", value=False, key="dictado_vivo")
     st.toggle("Mostrar detalle técnico", value=True, key="detalle")
     archivo = st.file_uploader("…o carga un audio", type=["wav", "mp3", "m4a", "ogg", "webm", "flac"],
                                key=f"up_{st.session_state.audio_key}")
@@ -734,7 +745,8 @@ with st.sidebar:
     st.caption("Precios y disponibilidad de demostración.")
 
 
-entrada = st.chat_input("Presiona el micrófono para hablar (o escribe)…", accept_audio=True)
+entrada = st.chat_input("Presiona el micrófono para hablar (o escribe)…",
+                        accept_audio=not st.session_state.get("dictado_vivo", False))
 
 
 def procesar_audio(fuente) -> bool:
@@ -766,6 +778,21 @@ if archivo is not None:
             st.session_state.audio_key += 1   
             st.rerun()
 
+
+if dictado_en_vivo and st.session_state.get("dictado_vivo"):
+    with st.bottom:
+        resultado = dictado_en_vivo(key="dictado_vivo_widget", default=None)
+    if resultado and resultado.get("seq") and resultado["seq"] != st.session_state.get("dictado_ultimo_seq"):
+        st.session_state.dictado_ultimo_seq = resultado["seq"]
+        try:
+            audio_bytes = base64.b64decode(resultado["audio_b64"])
+        except Exception:  # noqa: BLE001
+            audio_bytes = b""
+        buf = io.BytesIO(audio_bytes)
+        buf.name = "dictado." + (resultado.get("mime", "audio/webm").split("/")[-1].split(";")[0] or "webm")
+        if procesar_audio(buf):
+            st.rerun()
+
 # 2) Entrada desde la barra de chat: audio (micrófono) o texto de apoyo
 if entrada:
     audio_grabado = getattr(entrada, "audio", None)
@@ -793,4 +820,4 @@ for i, m in enumerate(st.session_state.chat):
                 st.json(t["argumentos"])
                 st.markdown("**Resultado**")
                 st.json(t["resultado"])
-st.session_state.reproducir = None  
+st.session_state.reproducir = None   
