@@ -1,0 +1,572 @@
+/* =========================================================
+   VuelaBot - DISEÑO PRINCIPAL
+   ========================================================= */
+
+/* ---------- FONDO GENERAL ---------- */
+
+.stApp {
+    background-color: #f5f8fc !important;
+}
+
+[data-testid="stAppViewContainer"] {
+    background-color: #f5f8fc !important;
+}
+
+[data-testid="stMain"] {
+    background-color: #f5f8fc !important;
+}
+
+
+/* ---------- CONTENEDOR PRINCIPAL ---------- */
+
+.main .block-container {
+    max-width: 1000px;
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
+
+
+/* ---------- TEXTO GENERAL ---------- */
+
+html,
+body,
+[class*="css"] {
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+h1,
+h2,
+h3 {
+    color: #172b4d !important;
+}
+
+p {
+    color: #334155;
+}
+
+
+/* ---------- SCROLLBAR ---------- */
+
+::-webkit-scrollbar {
+    width: 7px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f5f8fc;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+
+/* ---------- OCULTAR ELEMENTOS DE STREAMLIT ---------- */
+
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+
+/* =========================================================
+   DESTINIA - BURBUJAS PERSONALIZADAS
+   ========================================================= */
+
+/* Contenedor general */
+.destinia-burbuja {
+    padding: 14px 18px;
+    border-radius: 20px;
+    font-size: 15px;
+    line-height: 1.6;
+    box-shadow: 0 4px 14px rgba(30, 64, 175, 0.10);
+    margin: 3px 0;
+}
+
+
+/* =========================================================
+   DESTINIA
+   ========================================================= */
+
+.destinia-asistente {
+    background: #eaf4ff;
+    border: 1px solid #c9e3ff;
+    border-radius: 20px 20px 20px 6px;
+    color: #173b63;
+}
+
+
+/* Nombre */
+.destinia-nombre {
+    font-weight: 700;
+    color: #2474b8;
+    margin-bottom: 5px;
+    font-size: 14px;
+}
+
+
+/* =========================================================
+   USUARIO
+   ========================================================= */
+
+.destinia-usuario {
+    background: #5aa7e8;
+    border: 1px solid #398fd8;
+    border-radius: 20px 20px 6px 20px;
+    color: #ffffff;
+    box-shadow: 0 5px 16px rgba(37, 99, 235, 0.20);
+}
+
+
+/* Texto del usuario */
+.destinia-usuario .destinia-mensaje {
+    color: #ffffff !important;
+}
+
+.destinia-asistente {
+    width: fit-content;
+    max-width: 78%;
+    margin-left: 0 !important;
+    margin-right: auto !important;
+}
+
+/* Usuario → derecha */
+.destinia-usuario {
+    width: fit-content;
+    max-width: 78%;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+
+/* Texto de DestinIA */
+.destinia-asistente .destinia-mensaje {
+    color: #1e3a5f;
+}
+
+
+/* Negrita */
+.destinia-asistente strong {
+    color: #1769aa;
+}
+
+
+/* Espacio entre mensajes */
+.destinia-burbuja+.destinia-burbuja {
+    margin-top: 5px;
+}
+
+/* =========================================================
+   VUELABOT - FILAS DE MENSAJES
+   ========================================================= */
+
+.destinia-fila {
+    width: 100%;
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    margin: 10px 0;
+    box-sizing: border-box;
+}
+
+/* ---------- MENSAJE DEL ASISTENTE ---------- */
+
+.destinia-fila-asistente {
+    justify-content: flex-start;
+}
+
+.destinia-fila-asistente .destinia-burbuja {
+    margin: 0 !important;
+}
+
+/* ---------- MENSAJE DEL USUARIO ---------- */
+
+.destinia-fila-usuario {
+    justify-content: flex-start;
+    flex-direction: row-reverse;
+}
+
+.destinia-fila-usuario .destinia-burbuja {
+    margin: 0 !important;
+}
+
+/* ---------- AVATARES ---------- */
+
+.destinia-avatar {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    max-width: 38px;
+    border-radius: 50%;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 19px;
+    line-height: 1;
+
+    box-sizing: border-box;
+}
+
+/* Avatar VuelaBot */
+
+.destinia-avatar-asistente {
+    background: #eaf4ff;
+    border: 1px solid #c9e3ff;
+    box-shadow: 0 3px 10px rgba(30, 64, 175, 0.10);
+}
+
+/* Avatar usuario */
+
+.destinia-avatar-usuario {
+    background: #5aa7e8;
+    border: 1px solid #398fd8;
+    box-shadow: 0 3px 10px rgba(37, 99, 235, 0.18);
+}
+
+.destinia-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #ffffff;
+    border: 1px solid #e2edf7;
+    border-radius: 18px;
+    padding: 14px 20px;
+    margin-bottom: 22px;
+    box-shadow: 0 4px 16px rgba(30, 64, 175, 0.06);
+    box-sizing: border-box;
+}
+
+.destinia-header-avatar {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    border-radius: 50%;
+    background: #eaf4ff;
+    border: 1px solid #c9e3ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+}
+
+.destinia-header-title {
+    color: #172b4d;
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.destinia-header-subtitle {
+    color: #718096;
+    font-size: 13px;
+    margin-top: 3px;
+}
+
+.destinia-status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.destinia-status-dot {
+    width: 8px;
+    height: 8px;
+    min-width: 8px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+}
+
+/* =========================================================
+   DESTINIA - DISEÑO RESPONSIVE
+   ========================================================= */
+
+/* ---------- TABLETS ---------- */
+
+@media (max-width: 900px) {
+
+    .main .block-container {
+        max-width: 95%;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .destinia-header {
+        padding: 13px 16px;
+    }
+
+    .destinia-burbuja {
+        max-width: 90%;
+    }
+}
+
+
+/* ---------- CELULARES ---------- */
+
+@media (max-width: 600px) {
+
+    .main .block-container {
+        max-width: 100%;
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-top: 1rem;
+    }
+
+    /* ---------- ENCABEZADO ---------- */
+
+    .destinia-header {
+        padding: 12px;
+        border-radius: 15px;
+        gap: 10px;
+    }
+
+    .destinia-header-avatar {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        font-size: 20px;
+    }
+
+    .destinia-header-title {
+        font-size: 18px;
+    }
+
+    .destinia-header-subtitle {
+        font-size: 11px;
+    }
+
+    .destinia-status {
+        font-size: 11px;
+    }
+
+    /* ---------- BURBUJAS ---------- */
+
+    .destinia-burbuja {
+        max-width: 100%;
+        padding: 11px 14px;
+        font-size: 14px;
+        line-height: 1.5;
+        border-radius: 17px;
+        box-sizing: border-box;
+    }
+
+    /* ---------- FILAS ---------- */
+
+    .destinia-fila {
+        width: 100%;
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+        margin: 10px 0;
+        box-sizing: border-box;
+    }
+
+    .destinia-fila-asistente {
+        justify-content: flex-start;
+    }
+
+    .destinia-fila-usuario {
+        justify-content: flex-end;
+        flex-direction: row;
+    }
+
+    /* ---------- AVATARES ---------- */
+    .destinia-avatar {
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
+        max-width: 38px;
+
+        border-radius: 50%;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        font-size: 19px;
+        line-height: 1;
+
+        box-sizing: border-box;
+    }
+
+    /* Avatar VuelaBot */
+
+    .destinia-avatar-asistente {
+        background: #eaf4ff;
+        border: 1px solid #c9e3ff;
+        box-shadow: 0 3px 10px rgba(30, 64, 175, 0.10);
+    }
+
+    /* Avatar usuario */
+
+    .destinia-avatar-usuario {
+        background: #d9edff;
+        border: 1px solid #b8dcf5;
+        box-shadow: 0 3px 10px rgba(37, 99, 235, 0.12);
+    }
+
+    /* ---------- NOMBRE ---------- */
+
+    .destinia-nombre {
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 400px) {
+
+    .destinia-header {
+        flex-wrap: wrap;
+    }
+
+    .destinia-status {
+        width: 100%;
+        margin-left: 52px;
+        margin-top: -5px;
+    }
+
+    .destinia-burbuja {
+        max-width: 100%;
+        font-size: 13px;
+        padding: 10px 12px;
+    }
+
+    .destinia-fila {
+        gap: 6px;
+    }
+
+    .destinia-avatar {
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        max-width: 30px;
+        font-size: 15px;
+    }
+}
+
+/* =========================================================
+   DESTINIA - SIDEBAR
+   ========================================================= */
+
+[data-testid="stSidebar"] {
+    background: #ffffff !important;
+    border-right: 1px solid #e4edf5;
+}
+
+[data-testid="stSidebar"]>div:first-child {
+    padding: 1.5rem 1.1rem;
+}
+
+/* ---------- CABECERA ---------- */
+
+.destinia-sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 4px 14px 4px;
+}
+
+.destinia-sidebar-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: #eaf4ff;
+    border: 1px solid #cfe6fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 21px;
+}
+
+.destinia-sidebar-title {
+    color: #172b4d;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.destinia-sidebar-subtitle {
+    color: #8190a5;
+    font-size: 11px;
+    margin-top: 2px;
+}
+
+/* ---------- SECCIONES ---------- */
+
+.destinia-sidebar-section {
+    color: #54708c;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-top: 16px;
+    margin-bottom: 9px;
+}
+
+/* ---------- EJEMPLOS ---------- */
+
+.destinia-ejemplos {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.destinia-ejemplos div {
+    background: #f6f9fc;
+    border: 1px solid #e6eef5;
+    border-radius: 10px;
+    padding: 9px 10px;
+    color: #536579;
+    font-size: 14px;
+    line-height: 1.4;
+    transition: all 0.2s ease;
+}
+
+.destinia-ejemplos div:hover {
+    background: #eef7ff;
+    border-color: #cfe5f8;
+    color: #246b9f;
+}
+
+/* ---------- BOTONES ---------- */
+
+[data-testid="stSidebar"] button {
+    border-radius: 10px !important;
+}
+
+/* ---------- DIVISORES ---------- */
+
+[data-testid="stSidebar"] hr {
+    border-color: #e8eef4 !important;
+}
+
+/* ---------- RESPONSIVE ---------- */
+
+@media (max-width: 768px) {
+
+    [data-testid="stSidebar"]>div:first-child {
+        padding: 0.6rem 1rem 1rem 1rem;
+    }
+
+    .destinia-sidebar-header {
+        padding-bottom: 14px;
+    }
+
+    .destinia-sidebar-title {
+        font-size: 17px;
+    }
+
+}

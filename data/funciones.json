@@ -1,0 +1,143 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "buscar_destino",
+      "description": "Busca destinos turísticos del catálogo según tipo de viaje y/o nivel de presupuesto. Úsala cuando el cliente aún no sabe a dónde ir o pregunta cuánto costaría un viaje sin decir destino. Si da días y/o personas, devuelve los precios calculados. Omite los parámetros que no apliquen (no envíes null).",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tipo_viaje": {
+            "type": "string",
+            "enum": [
+              "cultura",
+              "aventura",
+              "naturaleza",
+              "playa",
+              "gastronomia"
+            ],
+            "description": "Tipo de experiencia buscada"
+          },
+          "presupuesto": {
+            "type": "string",
+            "enum": [
+              "bajo",
+              "medio",
+              "alto"
+            ],
+            "description": "Nivel de presupuesto"
+          },
+          "dias": {
+            "type": "integer",
+            "description": "Duración del viaje en días, para calcular precios"
+          },
+          "personas": {
+            "type": "integer",
+            "description": "Número de viajeros, para calcular el total"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "consultar_paquetes",
+      "description": "Consulta paquetes turísticos disponibles de un destino, filtrando opcionalmente por número de días y presupuesto.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "destino": {
+            "type": "string",
+            "description": "Nombre del destino, ej: Cusco"
+          },
+          "dias": {
+            "type": "integer",
+            "description": "Duración deseada en días"
+          },
+          "presupuesto": {
+            "type": "string",
+            "enum": [
+              "bajo",
+              "medio",
+              "alto"
+            ]
+          },
+          "presupuesto_max_pen": {
+            "type": "number",
+            "description": "Monto máximo en soles POR PERSONA, si el cliente da una cifra concreta"
+          }
+        },
+        "required": [
+          "destino"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "solicitar_cotizacion_viaje",
+      "description": "Registra una solicitud de cotización de viaje. Solo llamar cuando el cliente ya dio TODOS los datos: destino, días, personas, fecha de salida y nombre. Nunca inventar datos faltantes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "destino": {
+            "type": "string"
+          },
+          "dias": {
+            "type": "integer"
+          },
+          "personas": {
+            "type": "integer"
+          },
+          "fecha_salida": {
+            "type": "string",
+            "description": "Formato YYYY-MM-DD"
+          },
+          "nombre_cliente": {
+            "type": "string"
+          },
+          "presupuesto": {
+            "type": "string",
+            "enum": [
+              "bajo",
+              "medio",
+              "alto"
+            ]
+          }
+        },
+        "required": [
+          "destino",
+          "dias",
+          "personas",
+          "fecha_salida",
+          "nombre_cliente"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "consultar_itinerario",
+      "description": "Devuelve un itinerario sugerido día por día para un destino.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "destino": {
+            "type": "string"
+          },
+          "dias": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "destino",
+          "dias"
+        ]
+      }
+    }
+  }
+]

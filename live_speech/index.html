@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Plus Jakarta Sans",
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        sans-serif;
+      background: transparent;
+      color: #172b4d;
+    }
+
+    .caja {
+      width: 100%;
+      background: #ffffff;
+      border: 1px solid #e2edf7;
+      border-radius: 18px;
+      padding: 10px 14px;
+      box-shadow: 0 4px 14px rgba(30, 64, 175, 0.05);
+    }
+
+    .fila {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+    }
+
+    /* ---------- BOTÓN MICRÓFONO ---------- */
+
+    .btn-mic {
+      width: 42px;
+      height: 42px;
+      min-width: 42px;
+      padding: 0;
+
+      border: none;
+      border-radius: 50%;
+
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      font-size: 18px;
+      cursor: pointer;
+
+      color: #ffffff;
+      background: #5aa7e8;
+
+      transition:
+        transform 0.15s ease,
+        background 0.15s ease;
+    }
+
+    .btn-mic:hover {
+      transform: scale(1.05);
+      background: #398fd8;
+    }
+
+    .btn-mic:disabled {
+      opacity: 0.55;
+      cursor: default;
+    }
+
+    /* ---------- ESTADO ---------- */
+
+    .info-mic {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .titulo-mic {
+      font-size: 13px;
+      font-weight: 700;
+      color: #172b4d;
+    }
+
+    .subtitulo-mic {
+      font-size: 11px;
+      color: #718096;
+    }
+
+    /* ---------- GRABANDO ---------- */
+
+    .btn-mic.detener {
+      background: #ef4444;
+      animation: pulso 1.2s infinite;
+    }
+
+    .btn-mic.detener::after {
+      content: "⏹";
+      font-size: 15px;
+    }
+
+    .btn-mic.detener {
+      font-size: 0;
+    }
+
+    @keyframes pulso {
+
+      0% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35);
+      }
+
+      70% {
+        box-shadow: 0 0 0 9px rgba(239, 68, 68, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+      }
+    }
+
+    /* ---------- TRANSCRIPCIÓN ---------- */
+
+    .transcripcion {
+      margin-top: 8px;
+      padding-left: 53px;
+
+      font-size: 13px;
+      line-height: 1.4;
+
+      color: #334155;
+
+      white-space: pre-wrap;
+    }
+
+    .interina {
+      opacity: 0.55;
+      font-style: italic;
+    }
+
+    /* ---------- AVISO ---------- */
+
+    .aviso {
+      font-size: 11px;
+      color: #718096;
+      margin-top: 5px;
+    }
+
+    /* ---------- CELULAR ---------- */
+
+    @media (max-width: 600px) {
+
+      .caja {
+        padding: 9px 11px;
+        border-radius: 15px;
+      }
+
+      .btn-mic {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+      }
+
+      .titulo-mic {
+        font-size: 12px;
+      }
+
+      .subtitulo-mic {
+        font-size: 10px;
+      }
+
+      .transcripcion {
+        padding-left: 51px;
+        font-size: 12px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="caja">
+
+    <div class="fila">
+
+      <button id="btnGrabar" class="btn-mic">
+        🎤
+      </button>
+
+      <div class="info-mic">
+        <span class="titulo-mic" id="estado">
+          Hablar por voz
+        </span>
+
+        <span class="subtitulo-mic">
+          Presiona el micrófono y habla
+        </span>
+      </div>
+
+    </div>
+
+    <div class="transcripcion" id="transcripcion">
+      <span id="texto_transcripcion">Escribe o habla tu consulta...</span>
+    </div>
+
+    <div class="aviso" id="aviso"></div>
+
+  </div>
+
+  <script>
+    // ------------------------------------------------------------------
+    // Protocolo mínimo de Streamlit Components (sin librerías externas)
+    // ------------------------------------------------------------------
+    const SET_COMPONENT_VALUE = "streamlit:setComponentValue";
+    const RENDER = "streamlit:render";
+    const COMPONENT_READY = "streamlit:componentReady";
+    const SET_FRAME_HEIGHT = "streamlit:setFrameHeight";
+
+    function _sendMessage(type, data) {
+      const outbound = Object.assign({ isStreamlitMessage: true, type }, data);
+      window.parent.postMessage(outbound, "*");
+    }
+    function setFrameHeight() {
+      const h = document.documentElement.scrollHeight;
+      _sendMessage(SET_FRAME_HEIGHT, { height: h });
+    }
+    function notifyHost(value) {
+      _sendMessage(SET_COMPONENT_VALUE, { value, dataType: "json" });
+    }
+    window.addEventListener("message", (event) => {
+      if (event.data && event.data.type === RENDER) {
+        // No se usan argumentos desde Python por ahora.
+      }
+    });
+    _sendMessage(COMPONENT_READY, { apiVersion: 1 });
+    window.addEventListener("load", () => setTimeout(setFrameHeight, 0));
+
+    // ------------------------------------------------------------------
+    // Grabación de audio + subtítulos en vivo
+    // ------------------------------------------------------------------
+    const btn = document.getElementById("btnGrabar");
+    const estado = document.getElementById("estado");
+    const cajaTranscripcion = document.getElementById("transcripcion");
+    const aviso = document.getElementById("aviso");
+
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let reconocimiento = null;
+    let mediaRecorder = null;
+    let stream = null;
+    let chunks = [];
+    let textoFinal = "";
+    let grabando = false;
+    let secuencia = 0;
+
+    if (!SpeechRecognitionAPI) {
+      aviso.textContent = "Vista previa en vivo no disponible en este navegador (usa Chrome o Edge). Igual puedes grabar y enviar tu consulta.";
+    }
+    if (!(navigator.mediaDevices && window.MediaRecorder)) {
+      btn.disabled = true;
+      estado.textContent = "Este navegador no permite grabar audio aquí.";
+    }
+
+    function pintarTranscripcion(interina) {
+
+      const contenedor = document.getElementById("transcripcion");
+      const texto = document.getElementById("texto_transcripcion");
+
+      if (!contenedor || !texto) {
+        return;
+      }
+
+      const finalTexto = textoFinal || "";
+      const textoMostrar = (finalTexto + " " + interina).trim();
+
+      if (textoMostrar) {
+        texto.textContent = textoMostrar;
+        texto.classList.add("activo");
+      } else {
+        texto.textContent = "Escribe o habla tu consulta...";
+        texto.classList.remove("activo");
+      }
+
+      contenedor.style.display = "block";
+
+      setFrameHeight();
+    }
+
+    async function iniciarGrabacion() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (e) {
+        estado.textContent = "No se pudo acceder al micrófono. Revisa los permisos del navegador.";
+        return;
+      }
+      chunks = [];
+      textoFinal = "";
+      pintarTranscripcion("");
+
+      const tipo = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+      mediaRecorder = tipo ? new MediaRecorder(stream, { mimeType: tipo }) : new MediaRecorder(stream);
+      mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" });
+        if (blob.size < 500) {
+          estado.textContent = "No se detectó audio. Presiona Grabar e inténtalo de nuevo.";
+          btn.disabled = false;
+          return;
+        }
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = reader.result.split(",")[1];
+          secuencia += 1;
+          notifyHost({ seq: secuencia, audio_b64: base64, mime: blob.type, vivo: textoFinal.trim() });
+          estado.textContent = "Audio enviado";
+          btn.disabled = false;
+        };
+        reader.readAsDataURL(blob);
+      };
+      mediaRecorder.start();
+
+      if (SpeechRecognitionAPI) {
+        reconocimiento = new SpeechRecognitionAPI();
+        reconocimiento.lang = "es-PE";
+        reconocimiento.continuous = true;
+        reconocimiento.interimResults = true;
+        reconocimiento.onresult = (event) => {
+
+          let interina = "";
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+
+            const resultado = event.results[i];
+
+            if (resultado.isFinal) {
+
+              textoFinal += resultado[0].transcript + " ";
+
+            } else {
+
+              interina += resultado[0].transcript;
+            }
+          }
+
+          pintarTranscripcion(interina);
+        };
+        reconocimiento.onerror = () => { };
+        reconocimiento.onend = () => { if (grabando && reconocimiento) { try { reconocimiento.start(); } catch (e) { } } };
+        try { reconocimiento.start(); } catch (e) { }
+      }
+
+      grabando = true;
+
+      try {
+        reconocimiento.start();
+      } catch (e) {
+        console.log("No se pudo iniciar SpeechRecognition:", e);
+      }
+
+      btn.textContent = "";
+      btn.classList.add("detener");
+      estado.textContent = "Escuchando...";
+    }
+
+    function detenerGrabacion() {
+      grabando = false;
+      btn.disabled = true;
+      btn.textContent = "🎤";
+      btn.classList.remove("detener");
+      if (reconocimiento) { try { reconocimiento.stop(); } catch (e) { } }
+      if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+    }
+
+    btn.addEventListener("click", () => { grabando ? detenerGrabacion() : iniciarGrabacion(); });
+  </script>
+</body>
+
+</html>

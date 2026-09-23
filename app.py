@@ -3,31 +3,41 @@ TA2 - Asistente de IA por voz para una Agencia de viajes y turismo
 Modalidad B: Groq (Whisper + LLM con tool calling) + Streamlit
 Flujo: voz -> audio -> Whisper -> texto -> LLM -> function calling -> resultado -> respuesta
 """
+
 import asyncio
 import hashlib
 import json
 import os
 import re
-import unicodedata
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date
+
+from services.business_functions import (
+    buscar_destino,
+    consultar_paquetes,
+    solicitar_cotizacion_viaje,
+    consultar_itinerario,
+    FUNCIONES,
+)
 
 import base64
 import io
-
 import streamlit as st
 import streamlit.components.v1 as components
 from groq import Groq
 
 try:
-    import edge_tts  
+    import edge_tts  # voz del asistente (opcional)
 except ImportError:
     edge_tts = None
 
+# ---------------------------------------------------------------------------
 # Configuración
-MODEL_STT = "whisper-large-v3-turbo"     
-MODEL_CHAT = "openai/gpt-oss-120b"       
+# ---------------------------------------------------------------------------
+MODEL_STT = "whisper-large-v3-turbo"  # transcripción (Whisper en Groq)
+MODEL_CHAT = "openai/gpt-oss-120b"  # modelo conversacional con tool calling
 MAX_TOOL_ROUNDS = 4
+
 
 def buscar_logo():
     """Usa tu logo: primero un archivo con 'logo' en el nombre, o cualquier imagen dentro de assets/."""
@@ -36,7 +46,11 @@ def buscar_logo():
     candidatos = []
     for carpeta in (os.path.join(base, "assets"), base):
         if os.path.isdir(carpeta):
-            candidatos += [(carpeta, f) for f in sorted(os.listdir(carpeta)) if f.lower().endswith(exts)]
+            candidatos += [
+                (carpeta, f)
+                for f in sorted(os.listdir(carpeta))
+                if f.lower().endswith(exts)
+            ]
     for carpeta, f in candidatos:
         if "logo" in f.lower():
             return os.path.join(carpeta, f)
@@ -48,9 +62,29 @@ def buscar_logo():
 
 LOGO = buscar_logo()
 
-st.set_page_config(page_title="Viajito Tours | Asistente por voz", page_icon=LOGO, layout="centered")
+st.set_page_config(
+    page_title="VuelaBot | Asistente por voz",
+    page_icon=LOGO,
+    layout="centered",
+    initial_sidebar_state="expanded",
+)
+
+# ============================================================
+# CARGAR ESTILOS DE VuelaBot
+# ============================================================
 
 
+def cargar_css():
+    ruta_css = os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.css")
+
+    if os.path.exists(ruta_css):
+        with open(ruta_css, "r", encoding="utf-8") as archivo:
+            st.markdown(f"<style>{archivo.read()}</style>", unsafe_allow_html=True)
+
+
+cargar_css()
+
+# Oculta opciones del menú que no se usan (deja solo tema y Rerun) y el botón Deploy
 st.markdown(
     """
     <style>
@@ -66,11 +100,15 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-AVATARES = {"user": ":material/person:", "assistant": ":material/support_agent:"}
 
-RUTA_LIVE_MIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "components", "live_mic")
-dictado_en_vivo = (components.declare_component("live_mic", path=RUTA_LIVE_MIC)
-                   if os.path.isdir(RUTA_LIVE_MIC) else None)
+RUTA_LIVE_MIC = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "live_speech"
+)
+dictado_en_vivo = (
+    components.declare_component("live_speech", path=RUTA_LIVE_MIC)
+    if os.path.isdir(RUTA_LIVE_MIC)
+    else None
+)
 
 
 def get_api_key() -> str | None:
@@ -83,353 +121,42 @@ def get_api_key() -> str | None:
     return os.environ.get("GROQ_API_KEY")
 
 
-
+# ---------------------------------------------------------------------------
 # Datos FICTICIOS de la agencia (no son precios ni disponibilidad reales)
+# ---------------------------------------------------------------------------
+def cargar_destinos():
+    ruta = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "data", "destinos.json"
+    )
 
-DESTINOS = {
-    "cusco": {
-        "nombre": "Cusco",
-        "tipos": ["cultura", "aventura", "naturaleza"],
-        "clima": "Templado de día y frío de noche; lluvias de nov a mar",
-        "mejor_epoca": "Mayo a septiembre",
-        "precio_dia": {"bajo": 180, "medio": 320, "alto": 600},
-        "lugares": ["Plaza de Armas", "Sacsayhuamán", "Valle Sagrado", "Machu Picchu", "Montaña de 7 Colores"],
-        "duraciones": [3, 4, 5, 7],
-    },
-    "arequipa": {
-        "nombre": "Arequipa",
-        "tipos": ["cultura", "gastronomia", "aventura"],
-        "clima": "Seco y soleado casi todo el año",
-        "mejor_epoca": "Abril a noviembre",
-        "precio_dia": {"bajo": 150, "medio": 280, "alto": 520},
-        "lugares": ["Monasterio de Santa Catalina", "Centro histórico", "Cañón del Colca", "Mirador de Yanahuara"],
-        "duraciones": [3, 4, 5],
-    },
-    "paracas": {
-        "nombre": "Paracas (Ica)",
-        "tipos": ["playa", "naturaleza", "aventura"],
-        "clima": "Cálido y seco",
-        "mejor_epoca": "Diciembre a abril",
-        "precio_dia": {"bajo": 140, "medio": 260, "alto": 480},
-        "lugares": ["Islas Ballestas", "Reserva Nacional de Paracas", "Huacachina", "Sandboarding"],
-        "duraciones": [2, 3, 4],
-    },
-    "mancora": {
-        "nombre": "Máncora",
-        "tipos": ["playa", "aventura"],
-        "clima": "Cálido y soleado; mar más cálido de dic a abril",
-        "mejor_epoca": "Diciembre a abril",
-        "precio_dia": {"bajo": 160, "medio": 300, "alto": 560},
-        "lugares": ["Playa Máncora", "Punta Sal", "Los Órganos (avistamiento de ballenas)", "Kitesurf"],
-        "duraciones": [3, 4, 5, 7],
-    },
-    "iquitos": {
-        "nombre": "Iquitos",
-        "tipos": ["naturaleza", "aventura", "cultura"],
-        "clima": "Cálido y húmedo, lluvias frecuentes",
-        "mejor_epoca": "Junio a octubre",
-        "precio_dia": {"bajo": 200, "medio": 360, "alto": 650},
-        "lugares": ["Río Amazonas", "Reserva Pacaya Samiria", "Mercado de Belén", "Comunidades nativas"],
-        "duraciones": [3, 4, 5, 7],
-    },
-    "lima": {
-        "nombre": "Lima",
-        "tipos": ["gastronomia", "cultura"],
-        "clima": "Templado y húmedo; nublado de mayo a noviembre",
-        "mejor_epoca": "Diciembre a abril",
-        "precio_dia": {"bajo": 130, "medio": 250, "alto": 480},
-        "lugares": ["Centro histórico", "Miraflores y Barranco", "Circuito Mágico del Agua", "Ruta gastronómica"],
-        "duraciones": [2, 3, 4],
-    },
-}
-NIVELES = ["bajo", "medio", "alto"]
-MAX_DIAS_COTIZACION = 30
-MAX_PERSONAS = 20
-MAX_MENSAJES_CONTEXTO = 30  
-TIPOS_VIAJE = ["cultura", "aventura", "naturaleza", "playa", "gastronomia"]
+    with open(ruta, "r", encoding="utf-8") as archivo:
+        return json.load(archivo)
 
 
-def norm(txt: str) -> str:
-    """Minúsculas y sin tildes para comparar textos."""
-    txt = unicodedata.normalize("NFD", str(txt).strip().lower())
-    return "".join(c for c in txt if unicodedata.category(c) != "Mn")
+DESTINOS = cargar_destinos()
+
+MAX_MENSAJES_CONTEXTO = 30  # ventana de contexto enviada al modelo
 
 
-def buscar_destino_key(nombre: str) -> str | None:
-    n = norm(nombre)
-    for key in DESTINOS:
-        if key in n or n in key:
-            return key
-    return None
+# Schemas (formato compatible con OpenAI tools)
+def cargar_funciones():
+    ruta = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "data", "funciones.json"
+    )
+
+    with open(ruta, "r", encoding="utf-8") as archivo:
+        return json.load(archivo)
 
 
-
-# Funciones del negocio (las que llama el modelo)
-
-def buscar_destino(tipo_viaje: str = None, presupuesto: str = None, dias: int = None, personas: int = None) -> dict:
-    tipo = norm(tipo_viaje) if tipo_viaje else None
-    pres = norm(presupuesto) if presupuesto else None
-    if tipo and tipo not in TIPOS_VIAJE:
-        return {"error": f"tipo_viaje no válido. Opciones: {TIPOS_VIAJE}"}
-    if pres and pres not in NIVELES:
-        return {"error": f"presupuesto no válido. Opciones: {NIVELES}"}
-    try:
-        dias = int(dias) if dias else None
-        personas = int(personas) if personas else None
-    except (TypeError, ValueError):
-        return {"error": "dias y personas deben ser números enteros"}
-    if dias and not 1 <= dias <= MAX_DIAS_COTIZACION:
-        return {"error": f"dias debe estar entre 1 y {MAX_DIAS_COTIZACION}. Para estadías más largas, derivar a un asesor humano."}
-    if personas and not 1 <= personas <= MAX_PERSONAS:
-        return {"error": f"personas debe estar entre 1 y {MAX_PERSONAS}. Para grupos mayores, derivar a un asesor humano."}
-    niveles = [pres] if pres else NIVELES
-    res = []
-    for d in DESTINOS.values():
-        if tipo and tipo not in d["tipos"]:
-            continue
-        item = {
-            "destino": d["nombre"],
-            "tipos": d["tipos"],
-            "mejor_epoca": d["mejor_epoca"],
-            "clima": d["clima"],
-            "lugares_destacados": d["lugares"][:3],
-        }
-        if dias:
-            por_persona = {n: d["precio_dia"][n] * dias for n in niveles}
-            item["dias"] = dias
-            item["precio_por_persona_PEN"] = por_persona
-            if personas:
-                item["personas"] = personas
-                item["total_estimado_PEN"] = {n: v * personas for n, v in por_persona.items()}
-        elif pres:
-            item["precio_referencial_por_persona_por_dia_PEN"] = d["precio_dia"][pres]
-        res.append(item)
-    if not res:
-        return {"resultados": [], "mensaje": "No hay destinos con esos criterios en el catálogo."}
-    return {"resultados": res, "nota": "Precios referenciales ficticios, sujetos a cotización."}
+TOOLS = cargar_funciones()
 
 
-def _paquetes_de(d: dict) -> list:
-    res = []
-    for n_dias in d["duraciones"]:
-        for nivel in NIVELES:
-            res.append({
-                "paquete": f"{d['nombre']}, {n_dias} días y {n_dias - 1} {'noche' if n_dias == 2 else 'noches'}, nivel {nivel}",
-                "dias": n_dias,
-                "nivel": nivel,
-                "precio_por_persona_PEN": d["precio_dia"][nivel] * n_dias,
-                "incluye": ["Alojamiento", "Traslados", "Tours principales"] + (["Guía privado"] if nivel == "alto" else []),
-            })
-    return res
-
-
-def consultar_paquetes(destino: str, dias: int = None, presupuesto: str = None,
-                       presupuesto_max_pen: float = None) -> dict:
-    key = buscar_destino_key(destino or "")
-    if not key:
-        return {"error": f"Destino '{destino}' no está en el catálogo.", "destinos_disponibles": [d["nombre"] for d in DESTINOS.values()]}
-    d = DESTINOS[key]
-    pres = norm(presupuesto) if presupuesto else None
-    if pres and pres not in NIVELES:
-        return {"error": f"presupuesto no válido. Opciones: {NIVELES}"}
-    if dias:
-        try:
-            dias = int(dias)
-        except (TypeError, ValueError):
-            return {"error": "dias debe ser un número entero"}
-        if not 1 <= dias <= MAX_DIAS_COTIZACION:
-            return {"error": f"dias debe estar entre 1 y {MAX_DIAS_COTIZACION}. Para estadías más largas, derivar a un asesor humano."}
-    max_pen = None
-    if presupuesto_max_pen:
-        try:
-            max_pen = float(presupuesto_max_pen)
-        except (TypeError, ValueError):
-            return {"error": "presupuesto_max_pen debe ser un número (soles por persona)"}
-        if max_pen <= 0:
-            return {"error": "presupuesto_max_pen debe ser mayor a 0"}
-
-    todos = _paquetes_de(d)
-    paquetes = [p for p in todos
-                if (not pres or p["nivel"] == pres)
-                and (not dias or p["dias"] == dias)
-                and (not max_pen or p["precio_por_persona_PEN"] <= max_pen)]
-    if paquetes:
-        return {"destino": d["nombre"], "paquetes": paquetes, "nota": "Precios referenciales ficticios, sujetos a cotización."}
-
- 
-    resp = {"destino": d["nombre"], "paquetes": [], "mensaje": "No hay paquete estándar con esos filtros.",
-            "duraciones_estandar": d["duraciones"]}
-    if max_pen:
-        resp["paquete_mas_economico"] = min(todos, key=lambda p: p["precio_por_persona_PEN"])
-    if dias and dias not in d["duraciones"]:
-        niveles = [pres] if pres else NIVELES
-        resp["opcion_a_medida"] = {
-            "disponible": True,
-            "detalle": f"Se puede cotizar a medida de 1 a {MAX_DIAS_COTIZACION} días con solicitar_cotizacion_viaje.",
-            "precio_referencial_por_persona_PEN": {n: d["precio_dia"][n] * dias for n in niveles},
-        }
-    return resp
-
-
-def solicitar_cotizacion_viaje(destino: str = None, dias: int = None, personas: int = None,
-                               fecha_salida: str = None, nombre_cliente: str = None,
-                               presupuesto: str = "medio") -> dict:
-    # 1) Datos faltantes
-    faltantes = [k for k, v in {"destino": destino, "dias": dias, "personas": personas,
-                                "fecha_salida": fecha_salida, "nombre_cliente": nombre_cliente}.items() if not v]
-    if faltantes:
-        return {"error": "Faltan datos", "faltantes": faltantes}
-    # 2) Validaciones antes de ejecutar la acción
-    key = buscar_destino_key(destino)
-    if not key:
-        return {"error": f"Destino '{destino}' no está en el catálogo.", "destinos_disponibles": [d["nombre"] for d in DESTINOS.values()]}
-    try:
-        dias, personas = int(dias), int(personas)
-    except (TypeError, ValueError):
-        return {"error": "dias y personas deben ser números enteros"}
-    if not 1 <= dias <= MAX_DIAS_COTIZACION:
-        return {"error": f"dias debe estar entre 1 y {MAX_DIAS_COTIZACION}. Para estadías más largas, derivar a un asesor humano."}
-    if not 1 <= personas <= MAX_PERSONAS:
-        return {"error": f"personas debe estar entre 1 y {MAX_PERSONAS}. Para grupos mayores, derivar a un asesor humano."}
-    nombre = str(nombre_cliente).strip()
-    if not 2 <= len(nombre) <= 60 or any(c.isdigit() for c in nombre):
-        return {"error": "nombre_cliente no parece válido; pedirle al cliente su nombre nuevamente"}
-    pres = norm(presupuesto or "medio")
-    if pres not in NIVELES:
-        return {"error": f"presupuesto no válido. Opciones: {NIVELES}"}
-    try:
-        fecha = datetime.strptime(str(fecha_salida), "%Y-%m-%d").date()
-    except ValueError:
-        return {"error": "fecha_salida debe tener formato YYYY-MM-DD"}
-    if fecha < date.today():
-        return {"error": "fecha_salida no puede estar en el pasado"}
-    if fecha > date.today() + timedelta(days=730):
-        return {"error": "fecha_salida no puede superar los 2 años desde hoy"}
-    # 3) Cotización SIMULADA (no se reserva nada real)
-    d = DESTINOS[key]
-    por_persona = d["precio_dia"][pres] * dias
-    res = {
-        "codigo_cotizacion": "COT-" + uuid.uuid4().hex[:6].upper(),
-        "cliente": nombre,
-        "destino": d["nombre"],
-        "dias": dias,
-        "personas": personas,
-        "fecha_salida": str(fecha),
-        "nivel": pres,
-        "precio_por_persona_PEN": por_persona,
-        "total_estimado_PEN": por_persona * personas,
-        "estado": "Cotización registrada (simulada). Un asesor confirmará disponibilidad.",
-    }
-    if dias > 15:
-        res["nota"] = "Viaje extendido: un asesor evaluará combinar destinos y confirmará disponibilidad."
-    return res
-
-
-def consultar_itinerario(destino: str, dias: int) -> dict:
-    key = buscar_destino_key(destino or "")
-    if not key:
-        return {"error": f"Destino '{destino}' no está en el catálogo."}
-    try:
-        dias = int(dias)
-    except (TypeError, ValueError):
-        return {"error": "dias debe ser un número entero"}
-    if not 1 <= dias <= 15:
-        return {"error": "dias debe estar entre 1 y 15. Para viajes más largos, sugerir combinar destinos con un asesor."}
-    d = DESTINOS[key]
-    lugares = d["lugares"]
-    plan = [{"dia": i + 1, "actividad": lugares[i] if i < len(lugares) else "Día libre o excursión opcional"}
-            for i in range(dias)]
-    res = {"destino": d["nombre"], "itinerario_sugerido": plan}
-    if dias > len(lugares):
-        res["nota"] = "Los días adicionales quedan libres u opcionales; un asesor puede sugerir excursiones extra."
-    return res
-
-
-FUNCIONES = {
-    "buscar_destino": buscar_destino,
-    "consultar_paquetes": consultar_paquetes,
-    "solicitar_cotizacion_viaje": solicitar_cotizacion_viaje,
-    "consultar_itinerario": consultar_itinerario,
-}
-
-
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "buscar_destino",
-            "description": "Busca destinos turísticos del catálogo según tipo de viaje y/o nivel de presupuesto. Úsala cuando el cliente aún no sabe a dónde ir o pregunta cuánto costaría un viaje sin decir destino. Si da días y/o personas, devuelve los precios calculados. Omite los parámetros que no apliquen (no envíes null).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "tipo_viaje": {"type": "string", "enum": TIPOS_VIAJE, "description": "Tipo de experiencia buscada"},
-                    "presupuesto": {"type": "string", "enum": NIVELES, "description": "Nivel de presupuesto"},
-                    "dias": {"type": "integer", "description": "Duración del viaje en días, para calcular precios"},
-                    "personas": {"type": "integer", "description": "Número de viajeros, para calcular el total"},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "consultar_paquetes",
-            "description": "Consulta paquetes turísticos disponibles de un destino, filtrando opcionalmente por número de días y presupuesto.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "destino": {"type": "string", "description": "Nombre del destino, ej: Cusco"},
-                    "dias": {"type": "integer", "description": "Duración deseada en días"},
-                    "presupuesto": {"type": "string", "enum": NIVELES},
-                    "presupuesto_max_pen": {"type": "number", "description": "Monto máximo en soles POR PERSONA, si el cliente da una cifra concreta"},
-                },
-                "required": ["destino"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "solicitar_cotizacion_viaje",
-            "description": "Registra una solicitud de cotización de viaje. Solo llamar cuando el cliente ya dio TODOS los datos: destino, días, personas, fecha de salida y nombre. Nunca inventar datos faltantes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "destino": {"type": "string"},
-                    "dias": {"type": "integer"},
-                    "personas": {"type": "integer"},
-                    "fecha_salida": {"type": "string", "description": "Formato YYYY-MM-DD"},
-                    "nombre_cliente": {"type": "string"},
-                    "presupuesto": {"type": "string", "enum": NIVELES},
-                },
-                "required": ["destino", "dias", "personas", "fecha_salida", "nombre_cliente"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "consultar_itinerario",
-            "description": "Devuelve un itinerario sugerido día por día para un destino.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "destino": {"type": "string"},
-                    "dias": {"type": "integer"},
-                },
-                "required": ["destino", "dias"],
-            },
-        },
-    },
-]
-
-# ------------------
+# ---------------------------------------------------------------------------
 # Prompt de sistema
-# ------------------
+# ---------------------------------------------------------------------------
 def system_prompt() -> str:
     return f"""# ROL
-Eres "Viajito", asesor virtual de voz de una agencia de viajes y turismo en Perú. Hoy es {date.today().isoformat()}.
+Eres "VuelaBot", asesor virtual de voz de una agencia de viajes y turismo en Perú. Hoy es {date.today().isoformat()}.
 
 # OBJETIVO
 Ayudar al cliente a descubrir destinos, conocer paquetes, armar itinerarios y solicitar cotizaciones.
@@ -469,12 +196,25 @@ No pidas ni almacenes datos sensibles (DNI, tarjetas, contraseñas).
 """
 
 
-
+# ---------------------------------------------------------------------------
 # Lógica: transcripción y chat con tool calling
+# ---------------------------------------------------------------------------
+PROMPT_WHISPER = (
+    "Consulta a una agencia de viajes en Perú. Destinos: Cusco, Machu Picchu, Arequipa, Cañón del Colca, "
+    "Paracas, Islas Ballestas, Huacachina, Máncora, Iquitos, Lima, Miraflores. Presupuesto bajo, medio o alto."
+)
+ALUCINACIONES = (
+    "amara.org",
+    "subtítulos",
+    "subtitulos",
+    "suscríbete",
+    "suscribete",
+    "gracias por ver",
+)
 
-PROMPT_WHISPER = ("Consulta a una agencia de viajes en Perú. Destinos: Cusco, Machu Picchu, Arequipa, Cañón del Colca, "
-                  "Paracas, Islas Ballestas, Huacachina, Máncora, Iquitos, Lima, Miraflores. Presupuesto bajo, medio o alto.")
-ALUCINACIONES = ("amara.org", "subtítulos", "subtitulos", "suscríbete", "suscribete", "gracias por ver")
+
+def norm(texto: str) -> str:
+    return " ".join(texto.lower().strip().split())
 
 
 def transcribir(client: Groq, audio_bytes: bytes, nombre: str) -> str:
@@ -482,12 +222,17 @@ def transcribir(client: Groq, audio_bytes: bytes, nombre: str) -> str:
         file=(nombre, audio_bytes),
         model=MODEL_STT,
         language="es",
-        prompt=PROMPT_WHISPER,   
+        prompt=PROMPT_WHISPER,  # sesga a Whisper hacia el vocabulario del negocio
         temperature=0.0,
     )
     texto = (resp.text or "").strip()
-    
-    if len(t) < 2 or any(norm(a) in t for a in ALUCINACIONES) or t in norm(PROMPT_WHISPER):
+    # Whisper a veces "inventa" texto con silencio o ruido: se descarta
+    t = norm(texto)
+    if (
+        len(t) < 2
+        or any(norm(a) in t for a in ALUCINACIONES)
+        or t in norm(PROMPT_WHISPER)
+    ):
         return ""
     return texto
 
@@ -515,12 +260,29 @@ def recortar_historial(msgs: list) -> list:
     return msgs[-1:]
 
 
+# ---------------------------------------------------------------------------
+# Respuesta por voz (TTS). Groq solo ofrece TTS en inglés/árabe, por eso se usa edge-tts (voces es-PE)
+# ---------------------------------------------------------------------------
+VOCES = {
+    "Camila (Perú, mujer)": "es-PE-CamilaNeural",
+    "Alex (Perú, hombre)": "es-PE-AlexNeural",
+}
 
-VOCES = {"Camila (Perú, mujer)": "es-PE-CamilaNeural", "Alex (Perú, hombre)": "es-PE-AlexNeural"}
 
-
-MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
-         "septiembre", "octubre", "noviembre", "diciembre"]
+MESES = [
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+]
 RE_MESES = "(?:" + "|".join(MESES + ["setiembre"]) + ")"
 
 
@@ -533,33 +295,47 @@ def _fecha_hablada(m) -> str:
 
 def _monto_hablado(m) -> str:
     n = re.sub(r"[\s\u00a0\u202f]", "", m.group(1))
-    dec = re.search(r"[.,](\d{1,2})$", n) 
+    dec = re.search(r"[.,](\d{1,2})$", n)  # decimales (1-2 dígitos)
     centavos = 0
     if dec:
         centavos = int(dec.group(1).ljust(2, "0"))
-        n = n[:dec.start()]
-    n = re.sub(r"[.,]", "", n)                     
+        n = n[: dec.start()]
+    n = re.sub(r"[.,]", "", n)  # separadores de miles: 1.280 / 1,280 -> 1280
     return f"{n} soles" + (f" con {centavos} centavos" if centavos else "")
 
 
 def texto_para_voz(t: str) -> str:
     """Convierte la respuesta escrita en texto natural para leerlo en voz alta."""
-    t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)                                 
-    t = re.sub(r"(?:\s*en\s+formato)?\s*\(?\b(?:YYYY|AAAA)[-/]MM[-/]DD\b\)?", "", t, flags=re.I)
-    t = re.sub(r"\b(\d{4})-(\d{2})-(\d{2})\b", _fecha_hablada, t)                    
-    t = re.sub(r"(\d+)\s*d[ií]as?\s*[/y-]\s*(\d+)\s*noches?", r"\1 días y \2 noches", t, flags=re.I)
-    t = re.sub(r"(\d+)D\s*/\s*(\d+)N", r"\1 días y \2 noches", t)                    
-    t = re.sub(r"S/\.?\s*(\d+(?:[ \u00a0\u202f.,]\d{3})*(?:[.,]\d{1,2})?)", _monto_hablado, t) 
+    t = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)  # links
+    # formatos técnicos que no deben leerse: (YYYY-MM-DD), "en formato YYYY-MM-DD"
+    t = re.sub(
+        r"(?:\s*en\s+formato)?\s*\(?\b(?:YYYY|AAAA)[-/]MM[-/]DD\b\)?", "", t, flags=re.I
+    )
+    t = re.sub(
+        r"\b(\d{4})-(\d{2})-(\d{2})\b", _fecha_hablada, t
+    )  # 2026-12-15 -> 15 de diciembre de 2026
+    t = re.sub(
+        r"(\d+)\s*d[ií]as?\s*[/y-]\s*(\d+)\s*noches?",
+        r"\1 días y \2 noches",
+        t,
+        flags=re.I,
+    )
+    t = re.sub(r"(\d+)D\s*/\s*(\d+)N", r"\1 días y \2 noches", t)  # 4D/3N
+    t = re.sub(
+        r"S/\.?\s*(\d+(?:[ \u00a0\u202f.,]\d{3})*(?:[.,]\d{1,2})?)", _monto_hablado, t
+    )  # S/ 1 280
     t = t.replace("PEN", "soles")
-    t = re.sub(r"(?<=\d)[\u00a0\u202f](?=\d{3}\b)", "", t)                            
+    t = re.sub(r"(?<=\d)[\u00a0\u202f](?=\d{3}\b)", "", t)  # 1 280 -> 1280
     t = re.sub(r"(\d) (\d{3})(?= soles)", r"\1\2", t)
     t = t.replace("%", " por ciento")
-    t = re.sub(r"[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u20E3]", "", t)          
-    t = re.sub(r"[*_`#>|]", "", t)                                                    
-    t = re.sub(rf"\b({RE_MESES})\s*[-–]\s*({RE_MESES})\b", r"\1 a \2", t, flags=re.I) 
-    t = re.sub(r"[ \t][-–—][ \t]", ", ", t)                                                 
+    t = re.sub(r"[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u20E3]", "", t)  # emojis
+    t = re.sub(r"[*_`#>|]", "", t)  # markdown
+    t = re.sub(
+        rf"\b({RE_MESES})\s*[-–]\s*({RE_MESES})\b", r"\1 a \2", t, flags=re.I
+    )  # mayo-septiembre
+    t = re.sub(r"[ \t][-–—][ \t]", ", ", t)  # guiones largos
     t = t.replace("/", ", ")
-
+    # cada línea/viñeta se vuelve una frase con pausa
     frases = []
     for linea in t.split("\n"):
         linea = re.sub(r"^\s*(?:[-•]|\d+[.)])\s*", "", linea).strip()
@@ -588,8 +364,10 @@ def hablar(texto: str, voz: str):
     if not limpio:
         return None
     try:
-        return asyncio.run(asyncio.wait_for(_sintetizar(limpio, voz), timeout=20)) or None
-    except Exception:  
+        return (
+            asyncio.run(asyncio.wait_for(_sintetizar(limpio, voz), timeout=20)) or None
+        )
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -601,7 +379,7 @@ def ejecutar_funcion(nombre: str, args: dict) -> dict:
         return fn(**args)
     except TypeError as e:
         return {"error": f"Argumentos inválidos: {e}"}
-    except Exception as e:  
+    except Exception as e:  # noqa: BLE001
         return {"error": f"Error interno: {e}"}
 
 
@@ -618,7 +396,11 @@ def _recuperar_llamada(e: Exception):
         return None
     if isinstance(data, dict) and data.get("name") in FUNCIONES:
         args = data.get("arguments", {})
-        return (f"call_{uuid.uuid4().hex[:8]}", data["name"], args if isinstance(args, str) else json.dumps(args))
+        return (
+            f"call_{uuid.uuid4().hex[:8]}",
+            data["name"],
+            args if isinstance(args, str) else json.dumps(args),
+        )
     return None
 
 
@@ -633,40 +415,63 @@ def responder(client: Groq, texto: str) -> tuple[str, list]:
         try:
             resp = client.chat.completions.create(
                 model=MODEL_CHAT,
-                messages=[{"role": "system", "content": system_prompt()}] + recortar_historial(msgs),
+                messages=[{"role": "system", "content": system_prompt()}]
+                + recortar_historial(msgs),
                 tools=TOOLS,
                 tool_choice="auto",
                 temperature=0.3,
             )
             msg = resp.choices[0].message
             contenido = msg.content or ""
-            llamadas = [(tc.id, tc.function.name, tc.function.arguments) for tc in (msg.tool_calls or [])]
+            llamadas = [
+                (tc.id, tc.function.name, tc.function.arguments)
+                for tc in (msg.tool_calls or [])
+            ]
         except Exception as e:  # noqa: BLE001
             recuperada = _recuperar_llamada(e)
             if recuperada:
                 contenido, llamadas = "", [recuperada]
             elif "tool_use_failed" in str(e).lower() and reintentos < 2:
-                reintentos += 1   
+                reintentos += (
+                    1  # el modelo a veces genera una llamada inválida: se reintenta
+                )
                 continue
             else:
                 raise
         if llamadas:
-            msgs.append({
-                "role": "assistant",
-                "content": contenido,
-                "tool_calls": [{"id": i, "type": "function", "function": {"name": n, "arguments": a}}
-                               for i, n, a in llamadas],
-            })
+            msgs.append(
+                {
+                    "role": "assistant",
+                    "content": contenido,
+                    "tool_calls": [
+                        {
+                            "id": i,
+                            "type": "function",
+                            "function": {"name": n, "arguments": a},
+                        }
+                        for i, n, a in llamadas
+                    ],
+                }
+            )
             for i, nombre, argumentos in llamadas:
                 try:
                     args = json.loads(argumentos or "{}")
                 except json.JSONDecodeError:
                     args = {}
-                args = {k: v for k, v in args.items() if v is not None}   
+                args = {
+                    k: v for k, v in args.items() if v is not None
+                }  # ignora parámetros en null
                 resultado = ejecutar_funcion(nombre, args)
-                trazas.append({"funcion": nombre, "argumentos": args, "resultado": resultado})
-                msgs.append({"role": "tool", "tool_call_id": i,
-                             "content": json.dumps(resultado, ensure_ascii=False)})
+                trazas.append(
+                    {"funcion": nombre, "argumentos": args, "resultado": resultado}
+                )
+                msgs.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": i,
+                        "content": json.dumps(resultado, ensure_ascii=False),
+                    }
+                )
             continue
         final = contenido.strip()
         break
@@ -682,71 +487,131 @@ def procesar(client: Groq, texto: str, es_voz: bool):
     try:
         respuesta, trazas = responder(client, texto)
     except Exception as e:  # noqa: BLE001
-        del st.session_state.api_messages[n_previos:]  # evita dejar contexto inconsistente
-        st.session_state.chat.append({"role": "assistant", "content": mensaje_error(e), "trazas": []})
+        del st.session_state.api_messages[
+            n_previos:
+        ]  # evita dejar contexto inconsistente
+        st.session_state.chat.append(
+            {"role": "assistant", "content": mensaje_error(e), "trazas": []}
+        )
         return
     audio = None
     if st.session_state.get("voz_activada", True) and edge_tts is not None:
         with st.spinner("Generando voz…"):
-            audio = hablar(respuesta, VOCES[st.session_state.get("voz_nombre", "Camila (Perú, mujer)")])
-    st.session_state.chat.append({"role": "assistant", "content": respuesta, "trazas": trazas, "audio": audio})
-    st.session_state.reproducir = len(st.session_state.chat) - 1   # este mensaje se reproduce solo una vez
+            audio = hablar(
+                respuesta,
+                VOCES[st.session_state.get("voz_nombre", "Camila (Perú, mujer)")],
+            )
+    st.session_state.chat.append(
+        {"role": "assistant", "content": respuesta, "trazas": trazas, "audio": audio}
+    )
+    st.session_state.reproducir = (
+        len(st.session_state.chat) - 1
+    )  # este mensaje se reproduce solo una vez
 
 
-# ------------------
+# ---------------------------------------------------------------------------
 # Interfaz Streamlit
-# ------------------
+# ---------------------------------------------------------------------------
 if "chat" not in st.session_state:
-    st.session_state.chat = []         
-    st.session_state.api_messages = [] 
+    st.session_state.chat = []
+    st.session_state.api_messages = []
     st.session_state.last_audio = None
-    st.session_state.audio_key = 0      
+    st.session_state.audio_key = 0
+    st.session_state.reproducir = None
+    st.session_state.voz_activada = True
+    st.session_state.voz_nombre = "Camila (Perú, mujer)"
 
-if LOGO:
-    st.logo(LOGO, size="large")
-st.title("Viajito Tours")
+st.markdown(
+    """ <div class="destinia-header"> <div class="destinia-header-avatar">✈️</div> <div> <div class="destinia-header-title">VuelaBot</div> <div class="destinia-header-subtitle"> Asistente de voz · Agencia de viajes </div> </div> <div class="destinia-status"> <span class="destinia-status-dot"></span> En línea </div> </div> """,
+    unsafe_allow_html=True,
+)
 
 api_key = get_api_key()
 if not api_key:
-    st.error("Falta la API key. Crea `.streamlit/secrets.toml` con `GROQ_API_KEY = \"...\"` o define la variable de entorno GROQ_API_KEY.")
+    st.error(
+        'Falta la API key. Crea `.streamlit/secrets.toml` con `GROQ_API_KEY = "..."` o define la variable de entorno GROQ_API_KEY.'
+    )
     st.stop()
 client = Groq(api_key=api_key)
 
 with st.sidebar:
-    st.subheader("Opciones")
-    if st.button("Reiniciar conversación", icon=":material/restart_alt:"):
+
+    st.markdown(
+        """
+        <div class="destinia-sidebar-header">
+            <div class="destinia-sidebar-icon">✈️</div>
+            <div>
+                <div class="destinia-sidebar-title">VuelaBot</div>
+                <div class="destinia-sidebar-subtitle">
+                    Tu asistente de viajes
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        '<div class="destinia-sidebar-section">⚙️ Preferencias</div>',
+        unsafe_allow_html=True,
+    )
+
+    if edge_tts is None:
+        st.caption("Para respuestas por voz instala: pip install edge-tts")
+    else:
+        st.toggle("🔊 Respuesta por voz", key="voz_activada")
+
+        st.selectbox("🗣️ Voz del asistente", list(VOCES.keys()), key="voz_nombre")
+
+        st.toggle("🎙️ Dictado en vivo", value=False, key="dictado_vivo")
+
+    st.markdown(
+        '<div class="destinia-sidebar-section">🎧 Audio</div>', unsafe_allow_html=True
+    )
+
+    archivo = st.file_uploader(
+        "Carga un audio",
+        type=["wav", "mp3", "m4a", "ogg", "webm", "flac"],
+        key=f"up_{st.session_state.audio_key}",
+    )
+
+    st.markdown(
+        '<div class="destinia-sidebar-section">💡 Prueba VuelaBot</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="destinia-ejemplos">
+            <div>✈️ Quiero viajar a Cusco 4 días</div>
+            <div>🏖️ ¿Qué playas recomiendan?</div>
+            <div>💰 Quiero una cotización</div>
+            <div>👥 ¿Y para 6 personas?</div>
+            <div>🏔️ Quiero viajar a un lugar bonito</div>
+            <div>📍 Tengo 1500 soles para Cusco</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+
+    if st.button("🔄 Reiniciar conversación", use_container_width=True):
         st.session_state.chat = []
         st.session_state.api_messages = []
         st.session_state.last_audio = None
         st.session_state.audio_key += 1
         st.rerun()
-    if edge_tts is None:
-        st.caption("Para respuestas por voz instala: pip install edge-tts")
-    else:
-        st.toggle("Respuesta por voz", value=True, key="voz_activada")
-        st.selectbox("Voz del asistente", list(VOCES), key="voz_nombre")
-    if dictado_en_vivo:
-        st.toggle("Dictado con texto en vivo (Chrome/Edge)", value=False, key="dictado_vivo")
-    st.toggle("Mostrar detalle técnico", value=True, key="detalle")
-    archivo = st.file_uploader("…o carga un audio", type=["wav", "mp3", "m4a", "ogg", "webm", "flac"],
-                               key=f"up_{st.session_state.audio_key}")
-    st.markdown("**Ejemplos para probar**")
-    st.markdown(
-        "- Quiero viajar a Cusco 4 días con presupuesto medio\n"
-        "- ¿Qué playas recomiendan para diciembre?\n"
-        "- Quiero una cotización\n"
-        "- Me llamo Ana, 3 personas a Arequipa 3 días el 15 de diciembre\n"
-        "- ¿Y para 6 personas?\n"
-        "- Quiero viajar a un lugar bonito\n"
-        "- ¿Me ayudas con mi tarea de matemática?\n"
-        "- Paracas 7 días con presupuesto medio\n"
-        "- Tengo 1500 soles por persona para Cusco"
-    )
+
+    st.toggle("🔧 Mostrar detalle técnico", value=False, key="detalle")
+
     st.caption("Precios y disponibilidad de demostración.")
 
+# Barra de entrada estilo chat con micrófono integrado (voz como entrada principal, texto de apoyo)
+entrada = None
 
-entrada = st.chat_input("Presiona el micrófono para hablar (o escribe)…",
-                        accept_audio=not st.session_state.get("dictado_vivo", False))
+
+entrada = st.chat_input("Escribe o habla tu consulta...", accept_audio=True)
 
 
 def procesar_audio(fuente) -> bool:
@@ -757,12 +622,16 @@ def procesar_audio(fuente) -> bool:
         return False
     try:
         with st.spinner("Transcribiendo con Whisper…"):
-            transcripcion = transcribir(client, data, getattr(fuente, "name", None) or "audio.wav")
+            transcripcion = transcribir(
+                client, data, getattr(fuente, "name", None) or "audio.wav"
+            )
     except Exception as e:  # noqa: BLE001
         st.error(f"Falló la transcripción. {mensaje_error(e)}")
         return False
     if not transcripcion:
-        st.warning("No se detectó voz en el audio. Intenta de nuevo hablando más cerca del micrófono.")
+        st.warning(
+            "No se detectó voz en el audio. Intenta de nuevo hablando más cerca del micrófono."
+        )
         return False
     with st.spinner("Pensando…"):
         procesar(client, transcripcion, es_voz=True)
@@ -775,21 +644,34 @@ if archivo is not None:
     if h != st.session_state.last_audio:
         st.session_state.last_audio = h
         if procesar_audio(archivo):
-            st.session_state.audio_key += 1   
+            st.session_state.audio_key += 1  # limpia el cargador
             st.rerun()
 
-
+# 1.5) Widget de dictado en vivo (opcional): mientras hablas se ve el texto, y al detener se envía el audio.
+# Se ancla junto al chat_input (con st.bottom) para no tener que subir cuando el chat crece.
 if dictado_en_vivo and st.session_state.get("dictado_vivo"):
+
     with st.bottom:
         resultado = dictado_en_vivo(key="dictado_vivo_widget", default=None)
-    if resultado and resultado.get("seq") and resultado["seq"] != st.session_state.get("dictado_ultimo_seq"):
+
+    if (
+        resultado
+        and resultado.get("seq")
+        and resultado["seq"] != st.session_state.get("dictado_ultimo_seq")
+    ):
         st.session_state.dictado_ultimo_seq = resultado["seq"]
+
         try:
             audio_bytes = base64.b64decode(resultado["audio_b64"])
-        except Exception:  # noqa: BLE001
+        except Exception:
             audio_bytes = b""
+
         buf = io.BytesIO(audio_bytes)
-        buf.name = "dictado." + (resultado.get("mime", "audio/webm").split("/")[-1].split(";")[0] or "webm")
+
+        buf.name = "dictado." + (
+            resultado.get("mime", "audio/webm").split("/")[-1].split(";")[0] or "webm"
+        )
+
         if procesar_audio(buf):
             st.rerun()
 
@@ -803,21 +685,74 @@ if entrada:
             procesar(client, entrada.text, es_voz=False)
 
 # 3) Historial
+# Mensaje inicial
 if not st.session_state.chat:
-    with st.chat_message("assistant", avatar=AVATARES["assistant"]):
-        st.markdown("Hola, soy **Viajito**, tu asesor de viajes. Presiona el micrófono y cuéntame a dónde quieres viajar, cuántos días y con qué presupuesto.")
+    st.markdown(
+        """
+        <div class="destinia-fila destinia-fila-asistente">
+            <div class="destinia-avatar destinia-avatar-asistente">✈️</div>
+            <div class="destinia-burbuja destinia-asistente">
+                <div class="destinia-nombre">✈️ VuelaBot</div>
+                <div class="destinia-mensaje">
+                    Hola 👋, soy VuelaBot tu asistente virtual de viajes.
+                    <br><br>
+                    Cuéntame a dónde quieres viajar, cuántos días y con qué presupuesto.
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# Historial de conversación
 for i, m in enumerate(st.session_state.chat):
-    with st.chat_message(m["role"], avatar=AVATARES[m["role"]]):
-        if m["role"] == "user" and m.get("voz"):
-            st.markdown(f"**Transcripción:** {m['content']}")
-        else:
-            st.markdown(m["content"])
+
+    if m["role"] == "user":
+        icono = "🎤 " if m.get("voz") else ""
+        st.markdown(
+            f"""
+            <div class="destinia-fila destinia-fila-usuario">
+                <div class="destinia-burbuja destinia-usuario">
+                    <div class="destinia-mensaje">
+                        {icono}{m['content']}
+                    </div>
+                </div>
+                <div class="destinia-avatar destinia-avatar-usuario">🧑</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    else:
+        st.markdown(
+            f"""
+            <div class="destinia-fila destinia-fila-asistente">
+                <div class="destinia-avatar destinia-avatar-asistente">✈️</div>
+                <div class="destinia-burbuja destinia-asistente">
+                    <div class="destinia-nombre">✈️ VuelaBot</div>
+                    <div class="destinia-mensaje">
+                        {m['content']}
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
         if m.get("audio"):
-            st.audio(m["audio"], format="audio/mp3", autoplay=(i == st.session_state.get("reproducir")))
-        for t in (m.get("trazas", []) if st.session_state.get("detalle", True) else []):
-            with st.expander(f"Función llamada: {t['funcion']}"):
-                st.markdown("**Argumentos**")
-                st.json(t["argumentos"])
-                st.markdown("**Resultado**")
-                st.json(t["resultado"])
-st.session_state.reproducir = None   
+            st.audio(
+                m["audio"],
+                format="audio/mp3",
+                autoplay=(i == st.session_state.get("reproducir")),
+            )
+
+    for t in (m.get("trazas", []) if st.session_state.get("detalle", False) else []):
+        with st.expander(f"Función llamada: {t['funcion']}"):
+            st.markdown("**Argumentos**")
+            st.json(t["argumentos"])
+            st.markdown("**Resultado**")
+            st.json(t["resultado"])
+
+# Evitar que el audio vuelva a reproducirse
+st.session_state.reproducir = None

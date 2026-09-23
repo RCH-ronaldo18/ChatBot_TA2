@@ -1,0 +1,116 @@
+{
+  "cusco": {
+    "nombre": "Cusco",
+    "tipos": ["cultura", "aventura", "naturaleza"],
+    "clima": "Templado de día y frío de noche; lluvias de nov a mar",
+    "mejor_epoca": "Mayo a septiembre",
+    "precio_dia": {
+      "bajo": 180,
+      "medio": 320,
+      "alto": 600
+    },
+    "lugares": [
+      "Plaza de Armas",
+      "Sacsayhuamán",
+      "Valle Sagrado",
+      "Machu Picchu",
+      "Montaña de 7 Colores"
+    ],
+    "duraciones": [3, 4, 5, 7]
+  },
+
+  "arequipa": {
+    "nombre": "Arequipa",
+    "tipos": ["cultura", "gastronomia", "aventura"],
+    "clima": "Seco y soleado casi todo el año",
+    "mejor_epoca": "Abril a noviembre",
+    "precio_dia": {
+      "bajo": 150,
+      "medio": 280,
+      "alto": 520
+    },
+    "lugares": [
+      "Monasterio de Santa Catalina",
+      "Centro histórico",
+      "Cañón del Colca",
+      "Mirador de Yanahuara"
+    ],
+    "duraciones": [3, 4, 5]
+  },
+
+  "paracas": {
+    "nombre": "Paracas (Ica)",
+    "tipos": ["playa", "naturaleza", "aventura"],
+    "clima": "Cálido y seco",
+    "mejor_epoca": "Diciembre a abril",
+    "precio_dia": {
+      "bajo": 140,
+      "medio": 260,
+      "alto": 480
+    },
+    "lugares": [
+      "Islas Ballestas",
+      "Reserva Nacional de Paracas",
+      "Huacachina",
+      "Sandboarding"
+    ],
+    "duraciones": [2, 3, 4]
+  },
+
+  "mancora": {
+    "nombre": "Máncora",
+    "tipos": ["playa", "aventura"],
+    "clima": "Cálido y soleado; mar más cálido de dic a abril",
+    "mejor_epoca": "Diciembre a abril",
+    "precio_dia": {
+      "bajo": 160,
+      "medio": 300,
+      "alto": 560
+    },
+    "lugares": [
+      "Playa Máncora",
+      "Punta Sal",
+      "Los Órganos (avistamiento de ballenas)",
+      "Kitesurf"
+    ],
+    "duraciones": [3, 4, 5, 7]
+  },
+
+  "iquitos": {
+    "nombre": "Iquitos",
+    "tipos": ["naturaleza", "aventura", "cultura"],
+    "clima": "Cálido y húmedo, lluvias frecuentes",
+    "mejor_epoca": "Junio a octubre",
+    "precio_dia": {
+      "bajo": 200,
+      "medio": 360,
+      "alto": 650
+    },
+    "lugares": [
+      "Río Amazonas",
+      "Reserva Pacaya Samiria",
+      "Mercado de Belén",
+      "Comunidades nativas"
+    ],
+    "duraciones": [3, 4, 5, 7]
+  },
+
+  "lima": {
+    "nombre": "Lima",
+    "tipos": ["gastronomia", "cultura"],
+    "clima": "Templado y húmedo; nublado de mayo a noviembre",
+    "mejor_epoca": "Diciembre a abril",
+    "precio_dia": {
+      "bajo": 130,
+      "medio": 250,
+      "alto": 480
+    },
+    "lugares": [
+      "Centro histórico",
+      "Miraflores y Barranco",
+      "Circuito Mágico del Agua",
+      "Ruta gastronómica"
+    ],
+    "duraciones": [2, 3, 4]
+  }
+}

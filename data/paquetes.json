@@ -1,0 +1,68 @@
+[
+    {
+        "id": 1,
+        "destino": "Cusco",
+        "duracion": "4 días / 3 noches",
+        "presupuesto": "Medio",
+        "precio_desde": 1200,
+        "incluye": [
+            "Hotel",
+            "Desayunos",
+            "City Tour",
+            "Valle Sagrado"
+        ]
+    },
+    {
+        "id": 2,
+        "destino": "Cusco",
+        "duracion": "5 días / 4 noches",
+        "presupuesto": "Alto",
+        "precio_desde": 1800,
+        "incluye": [
+            "Hotel 4 estrellas",
+            "Desayunos",
+            "City Tour",
+            "Valle Sagrado",
+            "Machu Picchu"
+        ]
+    },
+    {
+        "id": 3,
+        "destino": "Cancún",
+        "duracion": "5 días / 4 noches",
+        "presupuesto": "Alto",
+        "precio_desde": 3200,
+        "incluye": [
+            "Hotel",
+            "Desayunos",
+            "Traslados",
+            "Excursión"
+        ]
+    },
+    {
+        "id": 4,
+        "destino": "Buenos Aires",
+        "duracion": "4 días / 3 noches",
+        "presupuesto": "Medio",
+        "precio_desde": 1600,
+        "incluye": [
+            "Hotel",
+            "Desayunos",
+            "City Tour",
+            "Cena"
+        ]
+    },
+    {
+        "id": 5,
+        "destino": "Cartagena",
+        "duracion": "4 días / 3 noches",
+        "presupuesto": "Medio",
+        "precio_desde": 1900,
+        "incluye": [
+            "Hotel",
+            "Desayunos",
+            "City Tour",
+            "Excursión a las Islas"
+        ]
+    }
+]
